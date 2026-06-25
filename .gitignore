@@ -15,3 +15,11 @@ build
 __pycache__
 # dlc scripts
 dlc_scripts/**
+
+vggsfm/
+point_cloud_outputs/
+pc_utils/
+feature-attack/
+diff-gaussian-rasterization/
+output/
+*.log

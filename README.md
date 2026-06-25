@@ -1,188 +1,158 @@
-<div align="center">
-<img src="assets/logo.png" width="50%"></img>
-<h3></h3>
-<h2>Computation Cost Attack on 3D Gaussian Splatting</h2>
+# PatchPoison: Poisoning Multi-View Datasets to Degrade 3D Reconstruction
 
-Jiahao Lu, [Yifan Zhang](https://sites.google.com/view/yifan-zhang), [Qiuhong Shen](https://florinshen.github.io/), [Xinchao Wang](https://scholar.google.com/citations?user=w69Buq0AAAAJ&hl=en&oi=ao), [Shuicheng Yan](https://scholar.google.com/citations?user=DNuiPHwAAAAJ&hl=en&oi=ao)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
 
+This repository is the official code release for **PatchPoison**, a framework for evaluating the vulnerability of 3D Gaussian Splatting (3DGS) to dataset poisoning attacks. 
 
-[Skywork AI](http://www1.kunlun.com/research/en/), [National University of Singapore](https://nus.edu.sg)
+We demonstrate that by applying structured perturbations (such as checkerboard patterns, noise, and geometric transformations) to training images, an attacker can severely degrade the novel view synthesis quality of 3DGS while keeping the poisoned images perceptually similar to the clean dataset.
 
-**ICLR 2025 spotlight** paper (top 5.1%)
+---
 
-<!-- <a href="https://opensource.org/licenses/Apache-2.0"><img alt="License: Apache 2.0" src="https://img.shields.io/badge/License-Apache%202.0-4E94CE.svg"></a>
-<a href="" target="_blank"><img src="https://img.shields.io/badge/arXiv-2301.12900-009688.svg" alt="arXiv"></a> -->
-:bookmark:[[Arxiv]](https://arxiv.org/pdf/2410.08190)   :open_book:[[OpenReview]](https://openreview.net/forum?id=ExrEw8cVlU)
-<h1></h1>
-</div>
+## Overview
 
-<p align="center">
-<img width="100%" alt="headline" src="assets/headline.png">
-</p>
+**PatchPoison** provides an automated, end-to-end pipeline to:
+1. Generate poisoned variants of standard 3D datasets (e.g., NeRF-Synthetic).
+2. Process the poisoned data (including COLMAP SfM).
+3. Train the victim 3D Gaussian Splatting models.
+4. Benchmark the attack success by measuring both **imperceptibility** (stealthiness in the 2D training data) and **reconstruction degradation** (impact on the 3D rendered novel views).
 
-## Table of Contents
-- [Introduction](#introduction)
-- [Installation](#installation)
-    - [Project Organization](#project-organization)
-    - [Enviroment Installation](#enviroment-installation)
-    - [Download Datasets](#download-datasets)
-    - [Verify Installation](#verify-installation)
-- [Quickstart](#quickstart)
-    - [Benchmark clean datasets computation cost](#benchmark-clean-datasets-computation-cost)
-    - [Poison, and benchmark poisoned datasets computation cost](#create-poisoned-datasets-and-benchmark-corresponding-computation-cost)
-    - [Benchmark black-box attack performance](#benchmark-black-box-attack-performance)
-    - [Defense strategy](#defense-strategy)
-- [Visualization]()
-- [Citation](#citation)
+---
 
+## Installation & Environment Setup
 
-## Introduction
-We identify an overlooked security vulnerability of 3D Gaussian Splatting by revealing a novel attack surface: the computation complexity of training 3DGS could be maliciously manipulated by poisoning the input data.
+The repository uses Conda to manage dependencies. We provide a setup script to install the environment and the required CUDA extensions.
 
-The key observation behind this new attack surface lies in the inherent flexibility in model complexity. 
-<p align="center">
-<img width="100%" alt="background" src="assets/background.png">
-</p>
+```bash
+# Clone the repository
+git clone git@github.com:PrajasW/patch-poison.git
+cd patch-poison
 
-Unlike NeRF or any other neural-network-driven machine learning systems which has pre-fixed and consistent computation cost (Fig. a), 3DGS has **adaptively flexible computation complexity**(i.e, number of parameters, training time cost and GPU memory consumption) **depending on the content of input** (Fig. b).  This flexibility leaves backdoor to computation cost attacks (Fig. c).
-
-We model attack via max-min bi-level optimization problem:
-```math
-\mathcal{D}_p  =  \mathop{\arg\max}\limits_{\mathcal{D}_p} \mathcal{C}(\mathcal{G}^*), ~~ \text{s.t.\quad } \mathcal{G}^* = \mathop{\arg\min}\limits_{\mathcal{G}} \mathcal{L}(\mathcal{D}_p),
+# Run the setup script to install dependencies and compile submodules
+bash setup.sh
 ```
 
-Where inner loop is the victim goal: minimize reconstruction error $\mathcal{L}(\mathcal{D}_p)$ during 3DGS training, and the outer loop is the attacker goal: making a poisoned dataset $\mathcal{D}_p$ to maximize victim's computation cost $\mathcal{C}(\mathcal{G}^*)$ spent on 3DGS training.
+This will create a Conda environment named `poison_splat`, install `torch==2.1.0+cu118`, and compile the `diff-gaussian-rasterization` submodule required by 3DGS.
 
-With constraints on perturbation strength ($\epsilon= 16/255$), for some scenes the attacker can raise the parameters needed to above 6 times and the GPU memory comsumption to above 8 times.
-<p align="center">
-<img width="100%" alt="constrained" src="assets/constrained-attack-results.png">
-</p>
+> **Hardware Prerequisites:** 3D Gaussian Splatting is VRAM-intensive. To run the full poisoning and training pipeline, we recommend a Linux environment (Ubuntu 22.04 tested) with an NVIDIA GPU. For the NeRF-Synthetic dataset, at least 12GB of VRAM is recommended. For the Mip-NeRF 360 dataset, 48GB of VRAM is recommended.
 
-If the attacker is allowed to unlimitedly alter input data, the attack can be more damaging, sometimes achieving 80 GB GPU memory consumption, which is enough to cause an out-of-memory error and denial-of-service on most GPUs.
+---
 
-<p align="center">
-<img width="100%" alt="unconstrained" src="assets/unconstrained-attack-results.png">
-</p>
+## Dataset Preparation
 
+We benchmark our attacks primarily on the **NeRF-Synthetic** and **Mip-NeRF 360** datasets. Download them automatically using the provided script:
 
-## Installation
-### Project Organization
-```
-poison-splat
-    |---assets
-        (directory for project introduction figures)
-    |---attacker
-        (directory for attacker behavior)
-    |---dataset
-        (directory for saving clean and poisoned datasets)
-    |---exp
-        (directory for experiment scripts)
-    |---log
-        (directory for experiment records)
-    |---victim
-        (directory for victim behavior)
+```bash
+bash get_dataset.sh
 ```
 
-### Enviroment Installation
-First create a conda environment with pytorch-gpu. CUDA version 11.8 recommended.
+This script will download and extract the datasets into the appropriate directories for the pipeline to use.
+
+---
+
+## Experimental Pipeline
+
+All orchestration scripts for generating poisoned data, training, and benchmarking are located in the `main/` directory.
+
+### 1. Dataset Poisoning (`make_*.py`)
+The `make_*.py` scripts are responsible for injecting specific types of perturbations into the clean datasets. 
+For example, to generate color-based checkerboard attacks:
+```bash
+python main/make_colour.py
 ```
-conda create -n poison_splat python=3.11 -y
-conda activate poison_splat
-conda install pytorch torchvision pytorch-cuda=11.8 -c pytorch -c nvidia -y
-pip install -r requirements.txt
+This generates variants in your configured dataset path with varying intensities and block sizes.
+
+### 2. End-to-End Pipeline (`*.sh`)
+The shell scripts in `main/` automate the full experiment lifecycle for different attack vectors. For example, to run the color attack pipeline:
+```bash
+bash main/colour.sh
+```
+**What this does under the hood:**
+1. Generates the poisoned dataset variants.
+2. Runs COLMAP on the poisoned datasets to estimate poses (if necessary).
+3. Trains the victim 3DGS model for multiple experimental runs.
+4. Evaluates the resulting model.
+
+**Available attack pipelines in `main/` include:**
+- `colour.sh`: Tests attacks manipulating color intensities (e.g., checkerboard color differences).
+- `geometric_baselines.sh`: Tests baseline geometric attacks and standard image corruptions (e.g., Gaussian blur, JPEG compression, Gaussian noise).
+- `contrast.sh`: Tests attacks that modify image contrast.
+- `freq.sh`: Tests attacks modifying frequency components (e.g., high-frequency patterns).
+- `ratio.sh`: Tests the effectiveness of the attack when varying the ratio of poisoned data to clean data.
+- `size.sh`: Tests the impact of varying the size of the injected poison patch.
+- `alpha.sh`: Tests attacks altering alpha (transparency) channels.
+- `variants.sh`: Tests various combinations and other specific attack variants.
+
+---
+
+## Benchmarking & Evaluation
+
+Evaluation is handled by `victim/gaussian-splatting/custom_benchmark.py`. Unlike standard 3DGS evaluation, our benchmark measures two critical dimensions of a poisoning attack:
+
+1. **Imperceptibility**: Measures PSNR, SSIM, and LPIPS between the *clean dataset* and the *poisoned dataset*. This ensures the attack remains stealthy to human observers inspecting the training data.
+2. **Reconstruction Degradation**: Measures PSNR, SSIM, and LPIPS between the *final 3DGS renders* and the *clean ground truth views*. This quantifies how successfully the attack broke the novel view synthesis.
+
+The orchestration scripts automatically trigger this benchmark and save the metrics into `benchmark_dataset_comparison.log` and `benchmark_recon_quality.log` within the output directories.
+
+---
+
+## Generating Results & Tables
+
+To reproduce the exact tables and results reported in the paper, we provide parsing scripts in the `tables/` directory. 
+
+These scripts read the logs produced by the benchmarking pipeline and format them into readable console output and LaTeX tables:
+
+```bash
+# Generate the main results table
+python tables/generate_results_table.py
+
+# Generate clean/full dataset specific tables
+python tables/generate_clean_dataset_tables.py
+python tables/generate_full_dataset_tables.py
 ```
 
-### Download Datasets
+Outputs are aggregated from the subdirectories within the `results/` folder (e.g., `results_clean`, `results_freq`).
 
-Instructions of how to download `NeRF-Synthetic`, `MIP-NeRF360` and `Tanks-and-Temples` original datasets are provided in `dataset` directory.
+---
 
-For poisoned datasets, you can run poison-splat to make a poisoned dataset following the [data poisoning scripts](#create-poisoned-datasets-and-benchmark-corresponding-computation-cost) or alternatively, downloading our poisoned datasets:
+## Repository Structure
 
-Google Drive: https://drive.google.com/file/d/11EZwsxRxWEAOnOThoOEJVre77Q5_SQfx/view?usp=sharing
-
-
-
-### Verify Installation
-
-After installing the environment and downloading the `NeRF-Synthetic` dataset, you can verify your installation by running testing script:
-
-```
-bash exp/00_test/test_install.sh
-```
-
-## Quickstart
-
-### Benchmark clean datasets computation cost
-```
-bash exp/01_main_exp/benchmark_nerf_synthetic_clean.sh
-bash exp/01_main_exp/benchmark_mip_nerf_360_clean.sh
-bash exp/01_main_exp/benchmark_tanks_and_temples_clean.sh
-```
-Please note that the above scripts assume you have 8-GPU environment. If not, please change the GPU device id by resetting the `--gpu` argument in each script.
-
-### Create poisoned datasets and benchmark corresponding computation cost
-Constrained attack with perturbation 16/255:
-
-```
-bash exp/01_main_exp/eps16_attack_nerf_synthetic.sh
-bash exp/01_main_exp/eps16_attack_mip_nerf_360.sh
-bash exp/01_main_exp/eps16_attack_tanks_and_temples_1.sh
-bash exp/01_main_exp/eps16_attack_tanks_and_temples_2.sh
-bash exp/01_main_exp/eps16_attack_tanks_and_temples_3.sh
+```text
+patch-poison/
+├── main/                   # scripts
+│   ├── make_*.py           # Poisoned dataset generators
+│   └── *.sh                # End-to-end attack pipelines
+├── results/                # Output directory for evaluation results
+├── tables/                 # Scripts to generate paper tables from logs
+├── victim/
+│   └── gaussian-splatting/ # The victim 3DGS implementation
+│       ├── train.py        # Standard 3DGS training script
+│       ├── benchmark.py    # Trains and Benchmarks the model on given dataset
+│       └── custom_benchmark.py # Evaluates the model for our evaluation function
+├── setup.sh                # Environment and dependency setup
+└── get_dataset.sh          # Dataset download utility
 ```
 
-Unconstrained attack:
-```
-bash exp/01_main_exp/unbounded_attack_nerf_synthetic.sh
-bash exp/01_main_exp/unbounded_attack_mip_nerf_360.sh
-bash exp/01_main_exp/unbounded_attack_tanks_and_temples_1.sh
-bash exp/01_main_exp/unbounded_attack_tanks_and_temples_2.sh
-bash exp/01_main_exp/unbounded_attack_tanks_and_temples_3.sh
-```
+---
 
-### Benchmark black-box attack performance
-We borrowed implementation from [Scaffold-GS](https://github.com/city-super/Scaffold-GS) as a black-box victim, and benchmark their performance directly on the poisoned datasets for traditional Gaussian Splatting.
+## Acknowledgements
 
-Following scripts in `exp/02_blackbox_generalize/` to benchmark black-box attack performance.
+This repository heavily builds upon the official [3D Gaussian Splatting](https://github.com/graphdeco-inria/gaussian-splatting) implementation. We thank the authors for their foundational work and open-source contributions.
 
-To test the black-box performance for other variants of Gaussian Splatting, first implement the victim behavior in `victim/` folder. Be especially careful about the environment conflict - for example the `diff-gaussian-rasterization` library. `vicim/Scaffold-GS/submodules/diff-guassian-rasterization_scaffold/` gives an example of resolving such name conflicts.
+The benchmarking framework and evaluation pipeline are adapted from the [Poison-Splat](https://github.com/jiahaolu97/poison-splat) project. We acknowledge the authors for releasing their benchmarking scripts, which served as the foundation for our experimental infrastructure.
 
-Following the benchmark scripts `victim/gaussian-splatting/benchmark.py` and `victim/Scaffold-GS/benchmark.py`, write a script for benchmarking the newly added victim. 
 
-### Defense strategy
-We implemented one naive defense strategy in `victim/gaussian-splatting/defense/` where the maximum number of Gaussians involved in training is restricted. Run scripts in `exp/05_naive_defense/` to apply defensive training strategy.
-
-## Visualizations
-
-We put some visualizations of attacker poisoned data and the corresponding victim reconstructions here.
-
-### Constrained attack ($\epsilon=16/255$)
-
-dataset setting | Attacker Poisoned Image | Victim Reconstructed Image | PSNR |
-| :-: | :-: | :-: | :-: |
-| NS-Chair-eps16 | <img src="assets/NS-chair-eps16-r89-attacker.png" width="400" /> | <img src="assets/NS-chair-eps16-r89-victim.png" width="400" /> | 37.07 dB |
-| NS-Drums-eps16 | <img src="assets/NS-drums-eps16-r41-attacker.png" width="400" /> | <img src="assets/NS-drums-eps16-r41-victim.png" width="400" /> | 30.32 dB |
-| MIP-bicycle-eps16 | <img src="assets/MIP-bicycle-eps16-attacker.png" width="444" /> | <img src="assets/MIP-bicycle-eps16-victim.png" width="400" /> | 18.20 dB |
-| MIP-bonsai-eps16 | <img src="assets/MIP-bonsai-eps16-attacker.png" width="444" /> | <img src="assets/MIP-bonsai-eps16-victim.png" width="400" /> | 22.67 dB |
-
-### Unconstrained attack
-
-dataset setting | Attacker Poisoned Image | Victim Reconstructed Image | PSNR |
-| :-: | :-: | :-: | :-: |
-| NS-Chair-Unconstrained | <img src="assets/NS-chair-r85-attacker.png" width="400" /> | <img src="assets/NS-chair-r85-victim.png" width="400" /> | 19.54 dB |
-| NS-Drums-Unconstrained | <img src="assets/NS-drums-r46-attacker.png" width="300" /> | <img src="assets/NS-drums-r46-victim.png" width="300" /> | 18.65 dB |
-| MIP-bicycle-Unconstrained | <img src="assets/MIP-bicycle-uncon-attacker.png" width="444" /> | <img src="assets/MIP-bicycle-uncon-victim.png" width="400" /> | 20.57 dB |
-| MIP-bonsai-Unconstrained | <img src="assets/MIP-bonsai-uncon-attacker.png" width="444" /> | <img src="assets/MIP-bonsai-uncon-victim.png" width="400" /> | 23.66 dB |
+---
 
 ## Citation
-If you find our paper or this repo useful for your research, please consider citing:
-```
-@inproceedings{
-    lu2025poisonsplat,
-    title={Poison-splat: Computation Cost Attack on 3D Gaussian Splatting},
-    author={Jiahao Lu and Yifan Zhang and Qiuhong Shen and Xinchao Wang and Shuicheng YAN},
-    booktitle={The Thirteenth International Conference on Learning Representations},
-    year={2025},
-    url={https://openreview.net/forum?id=ExrEw8cVlU}
+
+If you find our work useful in your research, please consider citing our paper:
+
+```bibtex
+@article{wadekar2026patchpoison,
+  title={PatchPoison: Poisoning Multi-View Datasets to Degrade 3D Reconstruction},
+  author={Wadekar, Prajas and Bachina, Venkata Sai Pranav and Bhosikar, Kunal and Gangwal, Ankit and Sharma, Charu},
+  journal={arXiv preprint arXiv:2604.13153},
+  year={2026}
 }
 ```
