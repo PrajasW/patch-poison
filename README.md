@@ -1,13 +1,14 @@
 # PatchPoison: Poisoning Multi-View Datasets to Degrade 3D Reconstruction
+[![arXiv](https://img.shields.io/badge/arXiv-2604.13153-b31b1b.svg)](https://arxiv.org/abs/2604.13153)
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.11](https://img.shields.io/badge/python-3.11-blue.svg)](https://www.python.org/)
+<img width="782" height="251" alt="PatchPoison" src="https://github.com/user-attachments/assets/9735ff11-de2f-4e40-b67d-43a202d0d963" />
 
 This repository is the official code release for **PatchPoison**, a framework for evaluating the vulnerability of 3D Gaussian Splatting (3DGS) to dataset poisoning attacks. 
 
-We demonstrate that by applying structured perturbations (such as checkerboard patterns, noise, and geometric transformations) to training images, an attacker can severely degrade the novel view synthesis quality of 3DGS while keeping the poisoned images perceptually similar to the clean dataset.
+🎉 **Accepted at the [IEEE/CVF CVPR 2026 Workshop on Security, Privacy, and Adversarial Robustness in 3D Generative Vision Models (SPAR-3D)](https://www.spar3d.org/)!** 🎉
 
 ---
+
 
 ## Overview
 
@@ -46,13 +47,13 @@ We benchmark our attacks primarily on the **NeRF-Synthetic** and **Mip-NeRF 360*
 bash get_dataset.sh
 ```
 
-This script will download and extract the datasets into the appropriate directories for the pipeline to use.
+This script will download the datasets for the pipeline to use.
 
 ---
 
 ## Experimental Pipeline
 
-All orchestration scripts for generating poisoned data, training, and benchmarking are located in the `main/` directory.
+All scripts for generating poisoned data, training, and benchmarking are located in the `main/` directory.
 
 ### 1. Dataset Poisoning (`make_*.py`)
 The `make_*.py` scripts are responsible for injecting specific types of perturbations into the clean datasets. 
@@ -63,7 +64,7 @@ python main/make_colour.py
 This generates variants in your configured dataset path with varying intensities and block sizes.
 
 ### 2. End-to-End Pipeline (`*.sh`)
-The shell scripts in `main/` automate the full experiment lifecycle for different attack vectors. For example, to run the color attack pipeline:
+The shell scripts in `main/` automate the full experiment lifecycle. For example, to run the color attack pipeline:
 ```bash
 bash main/colour.sh
 ```
@@ -92,7 +93,7 @@ Evaluation is handled by `victim/gaussian-splatting/custom_benchmark.py`. Unlike
 1. **Imperceptibility**: Measures PSNR, SSIM, and LPIPS between the *clean dataset* and the *poisoned dataset*. This ensures the attack remains stealthy to human observers inspecting the training data.
 2. **Reconstruction Degradation**: Measures PSNR, SSIM, and LPIPS between the *final 3DGS renders* and the *clean ground truth views*. This quantifies how successfully the attack broke the novel view synthesis.
 
-The orchestration scripts automatically trigger this benchmark and save the metrics into `benchmark_dataset_comparison.log` and `benchmark_recon_quality.log` within the output directories.
+The scripts automatically trigger this benchmark and save the metrics into `benchmark_dataset_comparison.log` and `benchmark_recon_quality.log` within the output directories.
 
 ---
 
